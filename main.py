@@ -48,7 +48,7 @@ class Queue:
 
     async def queue_run_update_loop(self):
         while True:
-            await asyncio.sleep(4)
+            await asyncio.sleep(2)
             if self.to_update:
                 self.to_update = False
                 if self.message:
