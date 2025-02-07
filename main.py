@@ -1,6 +1,5 @@
 import os
 
-import time
 import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
@@ -21,7 +20,7 @@ dp = Dispatcher()
 async def is_admin(user_id: int, chat_id: int) -> bool:
     if user_id not in ADMINS:
         chat_admins = await bot.get_chat_administrators(chat_id)
-        if user_id not in chat_admins:
+        if user_id not in map(lambda x: x.user.id, chat_admins) or not INCLUDE_CHAT_ADMINS:
             return False
     return True
 
@@ -39,7 +38,6 @@ async def get_queue_as_text(chat_id: int, message_id: int):
 
 queues = {}
 
-
 class Queue:
     def __init__(self) -> None:
         self.to_update = False
@@ -48,7 +46,7 @@ class Queue:
 
     async def queue_run_update_loop(self):
         while True:
-            await asyncio.sleep(2)
+            await asyncio.sleep(3.5)
             if self.to_update:
                 self.to_update = False
                 if self.message:
@@ -60,12 +58,12 @@ class Queue:
     
     def update(self, message=None) -> None:
         self.to_update = True
-        self.task = None
         if message:
             self.message = message
 
     async def update_message(self, message: Message):
         updated_text = await get_queue_as_text(message.chat.id, message.message_id)
+
         try:
             await bot.edit_message_text(
                 text=updated_text,
@@ -85,18 +83,18 @@ class Queue:
 
         except TelegramBadRequest:
             print("Message not modified")
-    
+
     def delete(self):
         self.delete = True
 
 
 async def update_message(message: Message):
-    if message.message_id not in queues:
-        queues[message.message_id] = Queue()
-        queues[message.message_id].update(message)
-        asyncio.create_task(queues[message.message_id].queue_run_update_loop())
+    if (message.chat.id, message.message_id) not in queues:
+        queues[(message.chat.id, message.message_id)] = Queue()
+        queues[(message.chat.id, message.message_id)].update(message)
+        asyncio.create_task(queues[(message.chat.id, message.message_id)].queue_run_update_loop())
     else:
-        queues[message.message_id].update(message)
+        queues[(message.chat.id, message.message_id)].update(message)
 
 
 @dp.message(Command("start", "help"))
@@ -137,7 +135,8 @@ async def add_me_callback_handler(callback_query: CallbackQuery):
 
         await callback_query.answer("Ок, Вы добавлены в очередь")
     else:
-        await callback_query.answer("Ошибка, Вы уже добавлены в очередь")
+        await callback_query.answer("Ошибка, Вы уже добавлены в очередь. "
+                                    "Если нет, подождите, пока сообщение обновится", show_alert=True)
 
 
 
@@ -150,7 +149,8 @@ async def delete_me_callback_handler(callback_query: CallbackQuery):
 
         await callback_query.answer("Ок, Вы удалены из очереди")
     else:
-        await callback_query.answer("Ошибка, Вас не было в очереди")
+        await callback_query.answer("Ошибка, Вас уже не было в очереди. "
+                                    "Если нет, подождите, пока сообщение обновится", show_alert=True)
 
 
 @dp.callback_query(lambda c: c.data == "delete_queue")
@@ -161,8 +161,8 @@ async def delete_queue_callback_handler(callback_query: CallbackQuery):
 
     if await remove_queue(callback_query.message.chat.id, callback_query.message.message_id):
         await callback_query.message.delete()
-        if callback_query.message.message_id in queues:
-            queues[callback_query.message.message_id].delete()
+        if (callback_query.message.chat.id, callback_query.message.message_id) in queues:
+            queues[(callback_query.message.chat.id, callback_query.message.message_id)].delete()
         await callback_query.answer("Очередь удалена")
     else:
         await callback_query.answer("Не удалось удалить очередь")
