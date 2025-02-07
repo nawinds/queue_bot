@@ -75,7 +75,7 @@ class Queue:
             )
         except TelegramRetryAfter as e:
             print(f"FLOOD!!! Waiting {e.retry_after + 0.1}s...")
-            time.sleep(e.retry_after + 0.1)
+            await asyncio.sleep(e.retry_after + 0.1)
             await bot.edit_message_text(
                 text=updated_text,
                 chat_id=message.chat.id,
