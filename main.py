@@ -1,13 +1,13 @@
 import os
 
-from time import sleep
+import time
+import asyncio
 from aiogram import Bot, Dispatcher
 from aiogram.filters import Command
 from aiogram.types import Message, BotCommand, CallbackQuery
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.exceptions import TelegramRetryAfter, TelegramBadRequest
 from db_operations import init_db, get_queue, remove_queue, add_person, remove_person
-import asyncio
 
 API_TOKEN = os.getenv("TOKEN")
 
@@ -37,6 +37,68 @@ async def get_queue_as_text(chat_id: int, message_id: int):
     return queue
 
 
+queues = {}
+
+
+class Queue:
+    def __init__(self) -> None:
+        self.to_update = False
+        self.message = None
+        self.delete = False
+
+    async def queue_run_update_loop(self):
+        while True:
+            await asyncio.sleep(4)
+            if self.to_update:
+                self.to_update = False
+                if self.message:
+                    await self.update_message(self.message)
+                else:
+                    print("Queue has no message object")
+            if self.delete:
+                break
+    
+    def update(self, message=None) -> None:
+        self.to_update = True
+        self.task = None
+        if message:
+            self.message = message
+
+    async def update_message(self, message: Message):
+        updated_text = await get_queue_as_text(message.chat.id, message.message_id)
+        try:
+            await bot.edit_message_text(
+                text=updated_text,
+                chat_id=message.chat.id,
+                message_id=message.message_id,
+                reply_markup=message.reply_markup
+            )
+        except TelegramRetryAfter as e:
+            print(f"FLOOD!!! Waiting {e.retry_after + 0.1}s...")
+            time.sleep(e.retry_after + 0.1)
+            await bot.edit_message_text(
+                text=updated_text,
+                chat_id=message.chat.id,
+                message_id=message.message_id,
+                reply_markup=message.reply_markup
+            )
+
+        except TelegramBadRequest:
+            print("Message not modified")
+    
+    def delete(self):
+        self.delete = True
+
+
+async def update_message(message: Message):
+    if message.message_id not in queues:
+        queues[message.message_id] = Queue()
+        queues[message.message_id].update(message)
+        asyncio.create_task(queues[message.message_id].queue_run_update_loop())
+    else:
+        queues[message.message_id].update(message)
+
+
 @dp.message(Command("start", "help"))
 async def create_message_handler(message: Message):
     await message.answer("Привет! Это бот, позволяющий создавать очереди в группах. "
@@ -64,29 +126,6 @@ async def create_message_handler(message: Message):
 
     await update_message(message.reply_to_message)
     await message.delete()
-
-
-async def update_message(message: Message):
-    updated_text = await get_queue_as_text(message.chat.id, message.message_id)
-    try:
-        await bot.edit_message_text(
-            text=updated_text,
-            chat_id=message.chat.id,
-            message_id=message.message_id,
-            reply_markup=message.reply_markup
-        )
-    except TelegramRetryAfter as e:
-        print(f"FLOOD!!! Waiting {e.retry_after + 0.1}s...")
-        sleep(e.retry_after + 0.1)
-        await bot.edit_message_text(
-            text=updated_text,
-            chat_id=message.chat.id,
-            message_id=message.message_id,
-            reply_markup=message.reply_markup
-        )
-
-    except TelegramBadRequest:
-        print("Message not modified")
 
 
 @dp.callback_query(lambda c: c.data == "add_me")
@@ -122,6 +161,8 @@ async def delete_queue_callback_handler(callback_query: CallbackQuery):
 
     if await remove_queue(callback_query.message.chat.id, callback_query.message.message_id):
         await callback_query.message.delete()
+        if callback_query.message.message_id in queues:
+            queues[callback_query.message.message_id].delete()
         await callback_query.answer("Очередь удалена")
     else:
         await callback_query.answer("Не удалось удалить очередь")
