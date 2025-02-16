@@ -30,4 +30,4 @@ jobs:
 
       - name: Restart systemd service
         run: |
-          ssh ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "sudo systemctl restart ${{ secrets.SERVICE_NAME }}"
+          ssh ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} "systemctl restart ${{ secrets.SERVICE_NAME }}"
