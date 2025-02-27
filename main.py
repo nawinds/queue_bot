@@ -113,7 +113,8 @@ async def create_message_handler(message: Message):
         [InlineKeyboardButton(text="Удалить очередь", callback_data="delete_queue")],
     ])
 
-    await message.answer("Новая очередь:", reply_markup=keyboard)
+    new_queue_message = await message.answer("Новая очередь:", reply_markup=keyboard)
+    await new_queue_message.pin()
 
 
 @dp.message(Command("update"))
