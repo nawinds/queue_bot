@@ -25,8 +25,8 @@ async def is_admin(user_id: int, chat_id: int) -> bool:
     return True
 
 
-async def get_queue_as_text(chat_id: int, message_id: int):
-    queue = "Новая очередь:\n\n"
+async def get_queue_as_text(chat_id: int, message_id: int, message_text):
+    queue = message_text[:message_text.find(":")] + ":\n\n"
 
     res = await get_queue(chat_id, message_id)
     for i in range(len(res)):
@@ -62,7 +62,7 @@ class Queue:
             self.message = message
 
     async def update_message(self, message: Message):
-        updated_text = await get_queue_as_text(message.chat.id, message.message_id)
+        updated_text = await get_queue_as_text(message.chat.id, message.message_id, message.text)
 
         try:
             await bot.edit_message_text(
@@ -113,7 +113,9 @@ async def create_message_handler(message: Message):
         [InlineKeyboardButton(text="Удалить очередь", callback_data="delete_queue")],
     ])
 
-    new_queue_message = await message.answer("Новая очередь:", reply_markup=keyboard)
+    queue_title = f"{message.text[space_pos:]}:" if (space_pos := message.text.find(" ")) != -1 else "Новая очередь:"
+
+    new_queue_message = await message.answer(queue_title, reply_markup=keyboard)
     await new_queue_message.pin()
 
 
